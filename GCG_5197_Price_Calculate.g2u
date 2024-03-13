@@ -1,0 +1,137 @@
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Silas for Metro Steel on-site 7/11/2018
+'This project will populate the Weight field (from Inventory_MST.LBS) and calculate the unit Price on the Sales Order Line and Quick Quote Line Screen based on the formula: Price = Weight * (Info 1) / 100
+'it will also do the hundred weight cost/alt-cost calculation as well and display in the user 4, 5 fields on quote and order lines.
+
+'Info 1 label will be named as "CWT"
+f.Intrinsic.Control.Try
+v.Local.sError.Declare(String)
+
+F.ODBC.Connection!con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+'Function.Intrinsic.Debug.InvokeDebugger
+'Function.Intrinsic.Debug.Stop
+
+F.Intrinsic.Control.SelectCase(V.Caller.hook)
+	'Populate - Quote line Screen
+	F.Intrinsic.Control.Case(10260)
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000016,"LOCK",1)
+		Variable.Passed.000202.Set("CWT Calc")
+		Variable.Passed.000186.Set("CWT")
+		'user 4 and 5 to be set.
+		v.Passed.000045.Set("Alt Cost (CWT)")
+		v.Passed.000061.Set("Avg Cost (CWT)")
+	'Script 2 button - Quote line Screen
+	F.Intrinsic.Control.Case(10680)
+		f.Intrinsic.Control.CallSub("Calculate")
+	'Populate - Order line Screen	
+	F.Intrinsic.Control.Case(12010)	
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000016,"LOCK",1)
+		Variable.Passed.000141.Set("CWT Calc")
+		Variable.Passed.000185.Set("CWT")
+		'use user fields 4 and 5 instead
+		v.Passed.000090.Set("Alt Cost (CWT)")
+		v.Passed.000091.Set("Avg Cost (CWT)")
+	'Script 2 button - Order line Screen	
+	F.Intrinsic.Control.Case(12420)
+		f.Intrinsic.Control.CallSub("Calculate")
+		
+F.Intrinsic.Control.EndSelect
+
+F.Intrinsic.Control.Catch
+	Function.Intrinsic.String.Concat("Subroutine Error",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.End 
+F.Intrinsic.Control.EndTry
+
+Program.Sub.Main.End
+
+Program.Sub.Calculate.Start
+f.Intrinsic.Control.Try
+v.Local..BulkDeclareString(sPart,sSQL,sRet)
+v.Local..BulkDeclareFloat(fHold,fWeight,fPrice)
+v.Local.bNumeric.Declare(boolean)
+v.Local.fUnitCost.Declare(float)
+v.Local.fAltCost.Declare(Float)
+v.Local.sTemp.Declare(String)
+
+
+'Both screen Quote Line and Order Line have the same following passed variables:
+	'Variable.Passed.000052: Part
+	'Variable.Passed.000053: Rev
+	'Variable.Passed.000054: Locn
+	'Variable.Passed.000016: Weight
+	'Variable.Passed.000028: Info 1
+	'Variable.Passed.000009: Price
+	
+'Generate complete Part number
+
+
+f.Intrinsic.String.GSSPartString(Variable.Passed.000052,Variable.Passed.000053,v.Local.sPart)
+'Set Weight if blank
+
+f.Intrinsic.String.Build("Select LBS from Inventory_Mst2 where part = '{0}' and Location = '{1}'",v.Local.sPart,Variable.Passed.000054,v.Local.sSQL)
+f.ODBC.Connection!con.ExecuteAndReturn(v.Local.sSQL,v.Local.fWeight)
+
+'get Cost
+f.Intrinsic.String.Build("Select COST from v_Inventory_Cost where part = '{0}' and Locn = '{1}'",v.Local.sPart,Variable.Passed.000054,v.Local.sSQL)
+f.ODBC.Connection!con.ExecuteAndReturn(v.Local.sSQL,v.Local.fUnitCost)
+'get Alt Cost
+f.Intrinsic.String.Build("Select AMT_ALT_COST from v_Inventory_MSTR where part = '{0}' and Location = '{1}'",v.Local.sPart,Variable.Passed.000054,v.Local.sSQL)
+f.ODBC.Connection!con.ExecuteAndReturn(v.Local.sSQL,v.Local.fAltCost)
+
+
+'Calculate: Price = Weight * (Info 1) / 100
+f.Intrinsic.Math.IsNumeric(Variable.Passed.000028,v.Local.bNumeric)
+f.Intrinsic.Control.If(v.Local.bNumeric,=,True)
+	f.Intrinsic.Math.Div(Variable.Passed.000028,100,v.Local.fHold)
+	f.Intrinsic.Math.Mult(v.Local.fWeight,v.Local.fHold,v.local.fPrice)
+f.Intrinsic.Control.Else
+	f.Intrinsic.UI.Msgbox("Info 1 must be numeric","Invalid data")
+	f.Intrinsic.Control.ExitSub
+f.Intrinsic.Control.EndIf
+f.Intrinsic.Math.Round(v.Local.fPrice,2,v.Local.fPrice)
+f.Intrinsic.Math.IsNumeric(Variable.Passed.000028,v.Local.bNumeric)
+v.passed.000009.Set(v.Local.fPrice)
+
+'Calculate Unit Cost (CWT)Local.bNumeric)
+f.Intrinsic.Control.If(v.Local.bNumeric,=,True)
+	f.Intrinsic.Math.Div(v.Local.fUnitCost,v.Local.fWeight,v.Local.fHold)
+	f.Intrinsic.Math.Mult(v.Local.fHold,100,v.Local.fUnitCost)
+f.Intrinsic.Control.EndIf
+f.Intrinsic.Math.Round(v.Local.fUnitCost,2,v.Local.fUnitCost)
+
+'Same for Alt Cost
+f.Intrinsic.Math.IsNumeric(Variable.Passed.000028,v.Local.bNumeric)
+f.Intrinsic.Control.If(v.Local.bNumeric,=,True)
+	f.Intrinsic.Math.Div(v.Local.fAltCost,v.Local.fWeight,v.Local.fHold)
+	f.Intrinsic.Math.Mult(v.Local.fHold,100,v.Local.fAltCost)
+f.Intrinsic.Control.EndIf
+f.Intrinsic.Math.Round(v.Local.fAltCost,2,v.Local.fAltCost)
+
+'set unit cost to display
+f.Intrinsic.Control.If(v.Caller.Hook,=,12420)
+	'user 5
+	v.Passed.000086.Set(v.Local.fUnitCost)
+	'user 4
+	v.Passed.000084.Set(v.Local.fAltCost)
+f.Intrinsic.Control.EndIf
+
+'set unit cost to display
+f.Intrinsic.Control.If(v.Caller.Hook,=,10680)
+	'user 5
+	v.Passed.000022.Set(v.Local.fUnitCost)
+	'user 4
+	v.Passed.000017.Set(v.Local.fAltCost)
+f.Intrinsic.Control.EndIf
+
+		
+F.Intrinsic.Control.Catch
+	Function.Intrinsic.String.Concat("Subroutine Error",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.End 
+F.Intrinsic.Control.EndTry
+
+Program.Sub.Calculate.End
